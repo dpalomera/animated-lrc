@@ -4,6 +4,7 @@ import { audioManager } from './audio/AudioManager';
 import { useAppStore } from './state/store';
 import { parseA2LRC, generateSampleLRC } from './lrc/parser';
 import { VideoExporter } from './export/VideoExporter';
+import { Tools } from './ui/Tools';
 import { FileUpload } from './ui/FileUpload';
 import { Controls } from './ui/Controls';
 import { Settings } from './ui/Settings';
@@ -230,6 +231,8 @@ function App() {
 
       <main className="app-main">
         <div className="sidebar">
+          <Tools />
+
           <section className="upload-section">
             <h2>📁 Files</h2>
             <FileUpload
