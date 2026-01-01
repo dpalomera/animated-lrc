@@ -13,6 +13,7 @@ export class VideoExporter {
   private renderer: KaraokeRenderer;
   private settings: RenderSettings;
   private duration: number;
+  private audioFile: File | null = null;
 
   constructor(renderer: KaraokeRenderer, settings: RenderSettings, duration: number) {
     this.renderer = renderer;
@@ -20,17 +21,17 @@ export class VideoExporter {
     this.duration = duration;
   }
 
-  // Audio file support can be added later with proper muxing
-  setAudioFile(_file: File): void {
-    // TODO: Implement audio muxing
+  setAudioFile(file: File): void {
+    this.audioFile = file;
   }
 
   private getSupportedMimeType(): string {
     const types = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
       'video/webm;codecs=vp9',
       'video/webm;codecs=vp8',
       'video/webm',
-      'video/mp4',
     ];
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) {
@@ -42,15 +43,49 @@ export class VideoExporter {
 
   async export(onProgress?: ExportProgressCallback): Promise<Blob> {
     const canvas = this.renderer.getCanvas();
-    const stream = canvas.captureStream(this.settings.fps);
+    const videoStream = canvas.captureStream(this.settings.fps);
+    
+    // Create combined stream with audio if available
+    let combinedStream: MediaStream;
+    let audioContext: AudioContext | null = null;
+    let audioSource: AudioBufferSourceNode | null = null;
+    
+    if (this.audioFile) {
+      try {
+        audioContext = new AudioContext();
+        const arrayBuffer = await this.audioFile.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        audioSource = audioContext.createBufferSource();
+        audioSource.buffer = audioBuffer;
+        
+        const destination = audioContext.createMediaStreamDestination();
+        audioSource.connect(destination);
+        
+        // Combine video and audio tracks
+        combinedStream = new MediaStream([
+          ...videoStream.getVideoTracks(),
+          ...destination.stream.getAudioTracks(),
+        ]);
+        
+        console.log('Audio stream created, tracks:', combinedStream.getTracks().length);
+      } catch (e) {
+        console.warn('Could not add audio, exporting video only:', e);
+        combinedStream = videoStream;
+      }
+    } else {
+      combinedStream = videoStream;
+    }
     
     const mimeType = this.getSupportedMimeType();
     console.log('Using mimeType:', mimeType);
+    console.log('Stream tracks:', combinedStream.getTracks().map(t => `${t.kind}: ${t.label}`));
 
     const chunks: Blob[] = [];
-    const mediaRecorder = new MediaRecorder(stream, {
+    const mediaRecorder = new MediaRecorder(combinedStream, {
       mimeType,
       videoBitsPerSecond: 5_000_000,
+      audioBitsPerSecond: 128_000,
     });
 
     mediaRecorder.ondataavailable = (e) => {
@@ -65,6 +100,15 @@ export class VideoExporter {
     return new Promise((resolve, reject) => {
       mediaRecorder.onstop = () => {
         console.log('MediaRecorder stopped, chunks:', chunks.length);
+        
+        // Clean up audio
+        if (audioSource) {
+          try { audioSource.stop(); } catch {}
+        }
+        if (audioContext) {
+          audioContext.close();
+        }
+        
         if (chunks.length === 0) {
           reject(new Error('No video data recorded'));
           return;
@@ -76,8 +120,20 @@ export class VideoExporter {
 
       mediaRecorder.onerror = (e) => {
         console.error('MediaRecorder error:', e);
+        if (audioSource) {
+          try { audioSource.stop(); } catch {}
+        }
+        if (audioContext) {
+          audioContext.close();
+        }
         reject(e);
       };
+
+      // Start audio playback if available
+      if (audioSource) {
+        audioSource.start(0);
+        console.log('Audio playback started');
+      }
 
       mediaRecorder.start(100);
       console.log('MediaRecorder started');
