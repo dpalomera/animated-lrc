@@ -136,6 +136,22 @@ body {
   font-size: 0.9rem;
 }
 
+.settings-group input[type="number"] {
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.settings-hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #666;
+}
+
 .preview-section {
   flex: 1;
   display: flex;

@@ -108,13 +108,22 @@ function App() {
     rendererRef.current.setBackground(backgroundFile);
   }, [backgroundFile]);
 
+  // Helper to apply timing offset
+  const getAdjustedTime = useCallback((time: number) => {
+    // offsetMs is in milliseconds, convert to seconds and apply
+    // Negative offset means lyrics appear earlier (add to time)
+    // Positive offset means lyrics appear later (subtract from time)
+    return time - settings.offsetMs / 1000;
+  }, [settings.offsetMs]);
+
   // Animation loop
   useEffect(() => {
     const animate = () => {
       if (isPlaying && rendererRef.current) {
         const time = audioManager.getCurrentTime();
         setCurrentTime(time);
-        rendererRef.current.update(time);
+        const adjustedTime = getAdjustedTime(time);
+        rendererRef.current.update(adjustedTime);
         rendererRef.current.render();
         
         // Check if playback ended
@@ -131,7 +140,7 @@ function App() {
     return () => {
       cancelAnimationFrame(animationRef.current);
     };
-  }, [isPlaying, audioDuration, setCurrentTime, setIsPlaying]);
+  }, [isPlaying, audioDuration, setCurrentTime, setIsPlaying, getAdjustedTime]);
 
   const handlePlay = useCallback(() => {
     const currentTime = useAppStore.getState().currentTime;
@@ -150,9 +159,10 @@ function App() {
   const handleSeek = useCallback((time: number) => {
     audioManager.seek(time);
     setCurrentTime(time);
-    rendererRef.current?.update(time);
+    const adjustedTime = getAdjustedTime(time);
+    rendererRef.current?.update(adjustedTime);
     rendererRef.current?.render();
-  }, [setCurrentTime]);
+  }, [setCurrentTime, getAdjustedTime]);
 
   const handleExport = useCallback(async () => {
     if (!rendererRef.current || !timeline) return;

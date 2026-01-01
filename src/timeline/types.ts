@@ -30,6 +30,7 @@ export interface RenderSettings {
   baseColor: number;
   highlightColor: number;
   backgroundColor: number;
+  offsetMs: number; // Timing offset in milliseconds (negative = earlier, positive = later)
 }
 
 export const DEFAULT_SETTINGS: RenderSettings = {
@@ -42,4 +43,5 @@ export const DEFAULT_SETTINGS: RenderSettings = {
   baseColor: 0x888888,
   highlightColor: 0xffff00,
   backgroundColor: 0x1a1a2e,
+  offsetMs: -100, // Default -100ms offset (lyrics appear 100ms earlier)
 };
