@@ -172,14 +172,27 @@ function App() {
     }
 
     try {
+      console.log('Starting export...');
       const blob = await exporter.export((progress) => {
         setExportProgress(progress.percentage);
       });
+      console.log('Export complete, blob size:', blob.size);
+      
+      // Reset progress before download
+      setExportProgress(0);
+      setMode('idle');
+      
+      // Small delay to ensure UI updates before download dialog
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       exporter.downloadBlob(blob);
+      
+      // Reset renderer to beginning
+      rendererRef.current?.update(0);
+      rendererRef.current?.render();
     } catch (err) {
       console.error('Export failed:', err);
-      alert('Export failed. Please try again.');
-    } finally {
+      alert('Export failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
       setMode('idle');
       setExportProgress(0);
     }

@@ -15,7 +15,7 @@ export interface KaraokeEffect {
 export class HighlightWipeEffect implements KaraokeEffect {
   name = 'Highlight Wipe';
 
-  onSyllableUpdate(syllable: Syllable, progress: number, visuals: SyllableVisuals): void {
+  onSyllableUpdate(_syllable: Syllable, progress: number, visuals: SyllableVisuals): void {
     // Linear interpolation from xStart to xEnd based on progress
     const clampedProgress = Math.max(0, Math.min(1, progress));
     visuals.maskWidth = visuals.xStart + (visuals.xEnd - visuals.xStart) * clampedProgress;

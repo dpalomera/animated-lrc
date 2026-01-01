@@ -13,7 +13,6 @@ export class VideoExporter {
   private renderer: KaraokeRenderer;
   private settings: RenderSettings;
   private duration: number;
-  private audioFile: File | null = null;
 
   constructor(renderer: KaraokeRenderer, settings: RenderSettings, duration: number) {
     this.renderer = renderer;
@@ -21,108 +20,36 @@ export class VideoExporter {
     this.duration = duration;
   }
 
-  setAudioFile(file: File): void {
-    this.audioFile = file;
+  // Audio file support can be added later with proper muxing
+  setAudioFile(_file: File): void {
+    // TODO: Implement audio muxing
   }
 
-  async exportWithWebCodecs(onProgress?: ExportProgressCallback): Promise<Blob> {
-    // Check WebCodecs support
-    if (!('VideoEncoder' in window)) {
-      throw new Error('WebCodecs not supported, falling back to MediaRecorder');
-    }
-
-    const { width, height, fps } = this.settings;
-    const totalFrames = Math.ceil(this.duration * fps);
-    const frameDuration = 1000000 / fps; // microseconds
-
-    const chunks: Uint8Array[] = [];
-
-    const encoder = new VideoEncoder({
-      output: (chunk) => {
-        const data = new Uint8Array(chunk.byteLength);
-        chunk.copyTo(data);
-        chunks.push(data);
-      },
-      error: (e) => console.error('Encoder error:', e),
-    });
-
-    encoder.configure({
-      codec: 'vp8',
-      width,
-      height,
-      bitrate: 5_000_000,
-      framerate: fps,
-    });
-
-    const canvas = this.renderer.getCanvas();
-
-    for (let frame = 0; frame < totalFrames; frame++) {
-      const time = frame / fps;
-      
-      // Update renderer to current time
-      this.renderer.update(time);
-      this.renderer.render();
-
-      // Create video frame
-      const videoFrame = new VideoFrame(canvas, {
-        timestamp: frame * frameDuration,
-        duration: frameDuration,
-      });
-
-      encoder.encode(videoFrame, { keyFrame: frame % 30 === 0 });
-      videoFrame.close();
-
-      if (onProgress) {
-        onProgress({
-          currentFrame: frame + 1,
-          totalFrames,
-          percentage: ((frame + 1) / totalFrames) * 100,
-        });
-      }
-
-      // Yield to prevent blocking
-      if (frame % 10 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
+  private getSupportedMimeType(): string {
+    const types = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+      'video/mp4',
+    ];
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type;
       }
     }
-
-    await encoder.flush();
-    encoder.close();
-
-    // Create WebM blob (simplified - in production use a proper muxer)
-    return new Blob(chunks, { type: 'video/webm' });
+    return 'video/webm';
   }
 
-  async exportWithMediaRecorder(onProgress?: ExportProgressCallback): Promise<Blob> {
+  async export(onProgress?: ExportProgressCallback): Promise<Blob> {
     const canvas = this.renderer.getCanvas();
     const stream = canvas.captureStream(this.settings.fps);
     
-    // Add audio track if available
-    if (this.audioFile) {
-      try {
-        const audioContext = new AudioContext();
-        const arrayBuffer = await this.audioFile.arrayBuffer();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        
-        const destination = audioContext.createMediaStreamDestination();
-        source.connect(destination);
-        
-        for (const track of destination.stream.getAudioTracks()) {
-          stream.addTrack(track);
-        }
-        
-        source.start();
-      } catch (e) {
-        console.warn('Could not add audio track:', e);
-      }
-    }
+    const mimeType = this.getSupportedMimeType();
+    console.log('Using mimeType:', mimeType);
 
     const chunks: Blob[] = [];
     const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp9',
+      mimeType,
       videoBitsPerSecond: 5_000_000,
     });
 
@@ -132,63 +59,95 @@ export class VideoExporter {
       }
     };
 
+    const totalFrames = Math.ceil(this.duration * this.settings.fps);
+    const frameInterval = 1000 / this.settings.fps;
+
     return new Promise((resolve, reject) => {
       mediaRecorder.onstop = () => {
-        resolve(new Blob(chunks, { type: 'video/webm' }));
+        console.log('MediaRecorder stopped, chunks:', chunks.length);
+        if (chunks.length === 0) {
+          reject(new Error('No video data recorded'));
+          return;
+        }
+        const blob = new Blob(chunks, { type: mimeType });
+        console.log('Created blob, size:', blob.size);
+        resolve(blob);
       };
 
       mediaRecorder.onerror = (e) => {
+        console.error('MediaRecorder error:', e);
         reject(e);
       };
 
-      mediaRecorder.start(100); // Collect data every 100ms
+      mediaRecorder.start(100);
+      console.log('MediaRecorder started');
 
-      const totalFrames = Math.ceil(this.duration * this.settings.fps);
       let frame = 0;
+      let lastTime = performance.now();
 
       const renderFrame = () => {
-        if (frame >= totalFrames) {
-          mediaRecorder.stop();
-          return;
+        const now = performance.now();
+        const elapsed = now - lastTime;
+
+        if (elapsed >= frameInterval) {
+          lastTime = now - (elapsed % frameInterval);
+
+          if (frame >= totalFrames) {
+            console.log('Rendering complete, stopping recorder');
+            // Give MediaRecorder time to process final frames
+            setTimeout(() => {
+              mediaRecorder.stop();
+            }, 200);
+            return;
+          }
+
+          const time = frame / this.settings.fps;
+          this.renderer.update(time);
+          this.renderer.render();
+
+          if (onProgress) {
+            onProgress({
+              currentFrame: frame + 1,
+              totalFrames,
+              percentage: ((frame + 1) / totalFrames) * 100,
+            });
+          }
+
+          frame++;
         }
 
-        const time = frame / this.settings.fps;
-        this.renderer.update(time);
-        this.renderer.render();
-
-        if (onProgress) {
-          onProgress({
-            currentFrame: frame + 1,
-            totalFrames,
-            percentage: ((frame + 1) / totalFrames) * 100,
-          });
-        }
-
-        frame++;
         requestAnimationFrame(renderFrame);
       };
 
-      renderFrame();
+      // Initial render
+      this.renderer.update(0);
+      this.renderer.render();
+      
+      requestAnimationFrame(renderFrame);
     });
   }
 
-  async export(onProgress?: ExportProgressCallback): Promise<Blob> {
-    try {
-      return await this.exportWithWebCodecs(onProgress);
-    } catch {
-      console.log('WebCodecs not available, using MediaRecorder fallback');
-      return await this.exportWithMediaRecorder(onProgress);
-    }
-  }
-
   downloadBlob(blob: Blob, filename: string = 'karaoke-video.webm'): void {
+    console.log('Downloading blob, size:', blob.size);
+    if (blob.size === 0) {
+      console.error('Cannot download empty blob');
+      return;
+    }
+    
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
     document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    
+    // Use setTimeout to ensure the click happens after DOM update
+    setTimeout(() => {
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+    }, 0);
   }
 }

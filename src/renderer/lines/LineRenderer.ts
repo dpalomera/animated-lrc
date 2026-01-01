@@ -62,7 +62,6 @@ export class LineRenderer {
     const startX = -textWidth / 2;
     
     let currentX = startX;
-    const fullText = this.line.text;
     
     // Create a temporary text to measure each syllable
     const tempStyle = new TextStyle({
@@ -70,7 +69,6 @@ export class LineRenderer {
       fontSize: this.settings.fontSize,
     });
 
-    let charIndex = 0;
     for (const syllable of this.line.syllables) {
       const syllableStartX = currentX;
       
@@ -88,7 +86,6 @@ export class LineRenderer {
       });
 
       currentX = syllableEndX;
-      charIndex += syllable.text.length;
     }
   }
 
