@@ -140,6 +140,11 @@ export class VideoExporter {
 
       let frame = 0;
       let lastTime = performance.now();
+      
+      // Helper to apply timing offset
+      const getAdjustedTime = (time: number) => {
+        return time - this.settings.offsetMs / 1000;
+      };
 
       const renderFrame = () => {
         const now = performance.now();
@@ -158,7 +163,8 @@ export class VideoExporter {
           }
 
           const time = frame / this.settings.fps;
-          this.renderer.update(time);
+          const adjustedTime = getAdjustedTime(time);
+          this.renderer.update(adjustedTime);
           this.renderer.render();
 
           if (onProgress) {
@@ -176,7 +182,7 @@ export class VideoExporter {
       };
 
       // Initial render
-      this.renderer.update(0);
+      this.renderer.update(getAdjustedTime(0));
       this.renderer.render();
       
       requestAnimationFrame(renderFrame);

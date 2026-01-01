@@ -88,6 +88,21 @@ export function Settings() {
           />
         </label>
       </div>
+
+      <div className="settings-group">
+        <label>
+          Timing Offset:
+          <input
+            type="number"
+            value={settings.offsetMs}
+            onChange={(e) => setSettings({ offsetMs: parseInt(e.target.value) || 0 })}
+            step={10}
+            style={{ width: '80px' }}
+          />
+          <span>ms</span>
+        </label>
+        <small className="settings-hint">Negative = lyrics earlier, Positive = lyrics later</small>
+      </div>
     </div>
   );
 }
