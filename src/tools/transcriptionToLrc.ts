@@ -58,16 +58,18 @@ export function transcriptionToA2LRC(transcription: Transcription): string {
   for (const segment of transcription.segments) {
     if (!segment.words || segment.words.length === 0) continue;
 
-    const firstWord = segment.words[0];
-    const lineTimestamp = formatTimestamp(firstWord.start);
+    const lineTimestamp = formatTimestamp(segment.start);
+    const endLineTimestamp = formatTimestamp(segment.end);
 
     const wordEntries = segment.words.map((w) => {
       const ts = formatTimestamp(w.start);
+      const endTs = formatTimestamp(w.end);
       const text = w.word.trim();
-      return `<${ts}>${text}`;
+      return `<${ts}>${text}<${endTs}>`;
     });
 
     lines.push(`[${lineTimestamp}]${wordEntries.join(" ")}`);
+    lines.push(`[${endLineTimestamp}]`);
   }
 
   return lines.join("\n");
